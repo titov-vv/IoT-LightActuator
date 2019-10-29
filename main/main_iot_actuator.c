@@ -5,6 +5,8 @@
 	- Get state from Shadow
 	- Power on/off connected lamp
 */
+//https://github.com/espressif/esp-aws-iot/blob/master/examples/thing_shadow/main/thing_shadow_sample.c
+//https://github.com/espressif/esp-aws-iot/blob/master/examples/subscribe_publish/main/subscribe_publish_sample.c
 #include <stdio.h>
 #include <string.h>
 #include "../build/config/sdkconfig.h"
@@ -20,6 +22,9 @@
 #include "nvs_flash.h"
 #include "tcpip_adapter.h"
 #include "driver/gpio.h"
+#include "cJSON.h"
+
+#include "blink.h"
 
 #include "aws_iot_mqtt_client_interface.h"
 #include "aws_iot_shadow_interface.h"
@@ -28,6 +33,8 @@
 // Here is a private file with WiFi connection details
 // It contains defines for WIFI_SSID and WIFI_PASSWORD
 #include "wifi_credentials.h"
+//-----------------------------------------------------------------------------
+#define MAX_JSON_SIZE		512
 //-----------------------------------------------------------------------------
 // Define TAGs for log messages
 #define	TAG_MAIN	"APP"
@@ -41,10 +48,29 @@
 char AWS_host[255] = AWS_HOST;
 uint32_t AWS_port = AWS_PORT;
 //-----------------------------------------------------------------------------
+static bool	LampIsOn = false;
+//-----------------------------------------------------------------------------
 static int wifi_retry = 0;
 /* FreeRTOS event group to to check signals */
 static EventGroupHandle_t events_group;
 const int IP_UP_BIT = BIT0;	// Bit to check IP link readiness
+const int STATE_BIT = BIT1; // Bit is set if state was changed
+
+
+//-----------------------------------------------------------------------------
+// THING SHADOW
+//{
+//  "desired": {
+//    "lampOn": false,
+//    "night_start": "23:00",
+//    "night_end": "07:00"
+//  },
+//  "reported": {
+//    "lampOn": false,
+//    "night_start": "23:00",
+//    "night_end": "07:00"
+//  }
+//}
 //-----------------------------------------------------------------------------
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
@@ -102,17 +128,57 @@ void wifi_start(void)
     ESP_LOGI(TAG_WIFI, "Connection start...");
 }
 //-----------------------------------------------------------------------------
-void lamp_actuate_callback(const char *pJsonString, uint32_t JsonStringDataLen, jsonStruct_t *pContext) {
-    IOT_UNUSED(pJsonString);
-    IOT_UNUSED(JsonStringDataLen);
+void lamp_actuate_callback(const char *pJsonString, uint32_t JsonStringDataLen, jsonStruct_t *pContext)
+{
+    //IOT_UNUSED(pJsonString);
+    //IOT_UNUSED(JsonStringDataLen);
+    ESP_LOGI(TAG_AWS, "RECEIVED %s", pJsonString);
+
+    ESP_LOGI(TAG_AWS, "callback fired");
+    if (pContext->type != SHADOW_JSON_BOOL)
+    {
+    	ESP_LOGI(TAG_AWS, "WRONG TYPE");
+    	return;
+    }
+    if (xEventGroupGetBits(events_group) & STATE_BIT)
+    {
+    	ESP_LOGI(TAG_AWS, "Previous update of \"lampOn\" in progress");
+    	return;
+    }
 
     if(pContext != NULL)
     {
-        ESP_LOGI(TAG_AWS, "Delta - lampOn state changed to %d", *(bool *) (pContext->pData));
+        ESP_LOGI(TAG_AWS, "Delta \"lampOn\" received: %d (type %d, len %d)", *(bool *)(pContext->pData), pContext->type, JsonStringDataLen);
         if (*(bool *)(pContext->pData))
+        {
         	gpio_set_level(LED_PIN, 1);
+        	LampIsOn = true;
+        }
         else
-        	gpio_set_level(LED_PIN, 1);
+        {
+        	gpio_set_level(LED_PIN, 0);
+        	LampIsOn = false;
+        }
+        xEventGroupSetBits(events_group, STATE_BIT);
+    }
+}
+//-----------------------------------------------------------------------------
+void shadow_update_callback(const char *pThingName, ShadowActions_t action, Shadow_Ack_Status_t status,
+                                const char *pReceivedJsonDocument, void *pContextData) {
+    IOT_UNUSED(pThingName);
+    IOT_UNUSED(action);
+    IOT_UNUSED(pReceivedJsonDocument);
+    IOT_UNUSED(pContextData);
+
+//    shadowUpdateInProgress = false;
+
+    ESP_LOGI(TAG_AWS, "update callback fired");
+    if(SHADOW_ACK_TIMEOUT == status) {
+        ESP_LOGE(TAG_AWS, "Update timed out");
+    } else if(SHADOW_ACK_REJECTED == status) {
+        ESP_LOGE(TAG_AWS, "Update rejected");
+    } else if(SHADOW_ACK_ACCEPTED == status) {
+        ESP_LOGI(TAG_AWS, "Update accepted");
     }
 }
 //-----------------------------------------------------------------------------
@@ -186,11 +252,48 @@ void aws_iot_task(void *arg)
     else
      	ESP_LOGE(TAG_AWS, "Shadow Delta callback failed: %d ", rc);
 
+    set_blink_pattern(0xA300);
+
+    cJSON *root, *state, *reported;
+    char JSON_buffer[MAX_JSON_SIZE];
+
     while(1)
     {
     	rc = aws_iot_shadow_yield(&aws_client, 100);
         if (rc != SUCCESS)
         	continue;
+
+        if (xEventGroupGetBits(events_group) & STATE_BIT)
+        {
+
+//    Update shadow state
+//        	{
+//        	  "state": {
+//        	    "reported": {
+//        	      "lampOn": false
+//        	    }
+//        	  }
+//        	}
+        	ESP_LOGI(TAG_AWS, "Report state");
+        	root = cJSON_CreateObject();
+        	state = cJSON_CreateObject();
+        	cJSON_AddItemToObject(root, "state", state);
+        	reported = cJSON_CreateObject();
+        	cJSON_AddItemToObject(state, "reported", reported);
+        	cJSON_AddBoolToObject(reported, "lampOn", LampIsOn);
+
+        	if (!cJSON_PrintPreallocated(root, JSON_buffer, MAX_JSON_SIZE, 0 /*  not formatted */))
+        	{
+        		ESP_LOGW(TAG_AWS, "JSON buffer too small");
+        	    JSON_buffer[0] = 0;
+        	}
+        	cJSON_Delete(root);
+        	ESP_LOGI(TAG_AWS, "JSON Thing reported state: %s", JSON_buffer);
+
+        	rc = aws_iot_shadow_update(&aws_client, AWS_CLIENTID, JSON_buffer, shadow_update_callback, NULL, 4, true);
+
+        	xEventGroupClearBits(events_group, STATE_BIT);
+        }
 
         vTaskDelay(1000 / portTICK_RATE_MS);
     }
@@ -200,7 +303,7 @@ void aws_iot_task(void *arg)
 //-----------------------------------------------------------------------------
 void aws_start(void)
 {
-	xTaskCreate(aws_iot_task, "aws_iot_task", 10240, (void *)0, 5, NULL);
+	xTaskCreate(aws_iot_task, "aws_iot_task", 20480, (void *)0, 5, NULL);
 }
 //-----------------------------------------------------------------------------
 void app_main(void)
@@ -213,6 +316,8 @@ void app_main(void)
 	events_group = xEventGroupCreate();
 	gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
 	gpio_set_direction(LAMP_PIN, GPIO_MODE_OUTPUT);
+
+	blink_start();
 
 	wifi_start();
 
