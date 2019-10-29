@@ -1,24 +1,21 @@
 /*
- * blink.h
+ * wifi.h
  *
  *  Created on: Oct 29, 2019
  *      Author: vtitov
  */
 
-#ifndef MAIN_BLINK_H_
-#define MAIN_BLINK_H_
+#ifndef MAIN_WIFI_H_
+#define MAIN_WIFI_H_
 //-----------------------------------------------------------------------------
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
 //-----------------------------------------------------------------------------
-// ESP32 internal LED GPIO
-#define LED_PIN		GPIO_NUM_2
-// low long is each blink interval, ms
-#define BLINK_TICK	125
+#define TAG_WIFI	"WiFi"
 //-----------------------------------------------------------------------------
-// Function to initiate blinking background task
-void blink_start(void);
-// Function to update blinking pattern
-void set_blink_pattern(uint32_t pattern);
+// Function to initiate WiFi connection background task
+// events_group[bit] - where to notify when IP connection is up
+void wifi_start(EventGroupHandle_t events_group, int bit);
 //-----------------------------------------------------------------------------
-#endif /* MAIN_BLINK_H_ */
+#endif /* MAIN_WIFI_H_ */
