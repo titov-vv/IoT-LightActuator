@@ -20,13 +20,13 @@ void set_blink_pattern(uint32_t pattern)
 void blink_task(void *arg)
 {
 	int	i, tick;
-	uint32_t pattern;
+	uint32_t pattern = 0;
 
 	while(1)
 	{
-		xTaskNotifyWait(0x00, ULONG_MAX, &BlinkPattern, 0);
-
+		xTaskNotifyWait(0x00, 0x00, &BlinkPattern, 0);
 		pattern = BlinkPattern;
+
 		for (i=0; i<32; i++)
 		{
 			tick = pattern & 0x01;

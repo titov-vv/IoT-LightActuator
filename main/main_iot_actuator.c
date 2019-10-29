@@ -252,7 +252,7 @@ void aws_iot_task(void *arg)
     else
      	ESP_LOGE(TAG_AWS, "Shadow Delta callback failed: %d ", rc);
 
-    set_blink_pattern(0xA300);
+    set_blink_pattern(0x0065);
 
     cJSON *root, *state, *reported;
     char JSON_buffer[MAX_JSON_SIZE];
