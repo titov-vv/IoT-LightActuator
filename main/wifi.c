@@ -6,6 +6,7 @@
  */
 //-----------------------------------------------------------------------------
 #include "wifi.h"
+#include "blink.h"
 
 #include "esp_system.h"
 #include "esp_spi_flash.h"
@@ -28,6 +29,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 		switch(event_id)
 		{
 		case WIFI_EVENT_STA_START:
+			set_blink_pattern(BLINK_FAST);
 			ESP_LOGI(TAG_WIFI, "Connecting...");
 			esp_wifi_connect();
 			xEventGroupClearBits(notification_group, notification_bit);
@@ -38,6 +40,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 			break;
 		case WIFI_EVENT_STA_DISCONNECTED:
 			wifi_retry++;
+			set_blink_pattern(BLINK_FAST);
 			ESP_LOGI(TAG_WIFI, "Reconnection attempt %d", wifi_retry);
 			esp_wifi_connect();
 			xEventGroupClearBits(notification_group, notification_bit);
@@ -50,6 +53,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 		switch(event_id)
 		{
 		case IP_EVENT_STA_GOT_IP:
+			set_blink_pattern(BLINK_OFF);
 			xEventGroupSetBits(notification_group, notification_bit);
 			ESP_LOGI(TAG_WIFI, "Received IP: %s", ip4addr_ntoa(&((ip_event_got_ip_t*)event_data)->ip_info.ip));
 			break;
