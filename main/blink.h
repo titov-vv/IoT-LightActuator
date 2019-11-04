@@ -14,7 +14,7 @@
 #define BLINK_OFF		0x0
 #define BLINK_ON		0xFFFFFFFF
 #define BLINK_FAST		0x55555555
-#define BLINK_SLOW		0x00FF00FF
+#define BLINK_SLOW		0x0000FFFF
 //-----------------------------------------------------------------------------
 // ESP32 internal LED GPIO
 #define LED_PIN		GPIO_NUM_2

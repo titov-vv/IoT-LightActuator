@@ -24,8 +24,6 @@
 #include "wifi.h"
 #include "thing.h"
 //-----------------------------------------------------------------------------
-#define MAX_JSON_SIZE		512
-//-----------------------------------------------------------------------------
 // Define TAGs for log messages
 #define	TAG_MAIN	"APP"
 //-----------------------------------------------------------------------------
@@ -166,10 +164,6 @@ const int STATE_BIT = BIT1; // Bit is set if state was changed
 //    else
 //     	ESP_LOGE(TAG_AWS, "Shadow Delta callback failed: %d ", rc);
 //
-//    set_blink_pattern(0x0065);
-//
-//    cJSON *root, *state, *reported;
-//    char JSON_buffer[MAX_JSON_SIZE];
 //
 //    while(1)
 //    {
