@@ -15,6 +15,9 @@
 //-----------------------------------------------------------------------------
 #define MAX_JSON_SIZE		512
 #define MAX_SERVER_TIMEOUT	30000
+#define JSON_LAMP_STATUS	"lamp_status"
+#define JSON_NIGHT_START	"night_start"
+#define JSON_NIGHT_END		"night_end"
 //-----------------------------------------------------------------------------
 static bool update_needed = true;
 static bool update_inprogress = false;
@@ -87,13 +90,13 @@ bool ParseTime(char *time, int *hh, int *mm)
 	hour = (time[0]-'0')*10 + (time[1]-'0');
 	if ((hour < 0)||(hour > 23))
 	{
-		ESP_LOGE(TAG_AWS, "Bad hour value in %s", time);
+		ESP_LOGE(TAG_AWS, "Bad hour value %d in %s", hour, time);
 		return false;
 	}
 	min = (time[3]-'0')*10 + (time[4]-'0');
-	if ((min < 0)||(min > 23))
+	if ((min < 0)||(min > 59))
 	{
-		ESP_LOGE(TAG_AWS, "Bad hour value in %s", time);
+		ESP_LOGE(TAG_AWS, "Bad min value %d in %s", min, time);
 		return false;
 	}
 
@@ -132,21 +135,21 @@ static void delta_callback(AWS_IoT_Client *pClient, char *topicName, uint16_t to
       	ESP_LOGE(TAG_AWS, "No 'state' found in delta update");
     }
 
-    value = cJSON_GetObjectItemCaseSensitive(state, "LampStatus");
+    value = cJSON_GetObjectItemCaseSensitive(state, JSON_LAMP_STATUS);
     if (cJSON_IsNumber(value))
     {
-    	ESP_LOGI(TAG_AWS, "New lamp status: %d", LampStatus);
+    	ESP_LOGI(TAG_AWS, "New lamp status: %d", value->valueint);
     	update_needed = SetLampStatus(value->valueint);
     }
 
-    value = cJSON_GetObjectItemCaseSensitive(state, "night_start");
+    value = cJSON_GetObjectItemCaseSensitive(state, JSON_NIGHT_START);
     if (cJSON_IsString(value) && (value->valuestring != NULL))
     {
     	ESP_LOGI(TAG_AWS, "New night start time: %s", value->valuestring);
     	update_needed = ParseTime(value->valuestring, &night_start_hh, &night_start_mm);
     }
 
-    value = cJSON_GetObjectItemCaseSensitive(state, "night_end");
+    value = cJSON_GetObjectItemCaseSensitive(state, JSON_NIGHT_END);
     if (cJSON_IsString(value) && (value->valuestring != NULL))
     {
     	ESP_LOGI(TAG_AWS, "New night end time: %s", value->valuestring);
@@ -158,6 +161,9 @@ static void status_callback(AWS_IoT_Client *pClient, char *topicName, uint16_t t
                                     IoT_Publish_Message_Params *params, void *pData)
 {
 	int topic_tag;
+
+	if (!update_inprogress)
+		return;
 
 	topic_tag = *((int *)pData);
 	ESP_LOGI(TAG_AWS, "Status callback %.*s\n%.*s", topicNameLen, topicName, (int) params->payloadLen, (char *)params->payload);
@@ -272,15 +278,7 @@ void update_shadow(AWS_IoT_Client *client)
 	char time_buffer[6];
 
 // Post following JSON for update
-//        	{
-//        	  "state": {
-//        	    "reported": {
-//    				"lampOn": false,
-//    				"night_start": "23:00",
-//    				"night_end": "07:00"
-//        	    }
-//        	  }
-//        	}
+// { "state": { "reported": { JSON_LAMP_STATUS: 0, JSON_NIGHT_START: "23:00", JSON_NIGHT_END: "07:00"}}}
 	ESP_LOGI(TAG_AWS, "Report current state");
 	root = cJSON_CreateObject();
 	state = cJSON_CreateObject();
@@ -288,13 +286,13 @@ void update_shadow(AWS_IoT_Client *client)
 	reported = cJSON_CreateObject();
 	cJSON_AddItemToObject(state, "reported", reported);
 	if (LampStatus)
-		cJSON_AddNumberToObject(reported, "LampStatus", 1);
+		cJSON_AddNumberToObject(reported, JSON_LAMP_STATUS, 1);
 	else
-		cJSON_AddNumberToObject(reported, "LampStatus", 0);
+		cJSON_AddNumberToObject(reported, JSON_LAMP_STATUS, 0);
 	sprintf(time_buffer, "%02d:%02d", night_start_hh, night_start_mm);
-	cJSON_AddStringToObject(reported, "night_start", time_buffer);
+	cJSON_AddStringToObject(reported, JSON_NIGHT_START, time_buffer);
 	sprintf(time_buffer, "%02d:%02d", night_end_hh, night_end_mm);
-	cJSON_AddStringToObject(reported, "night_end", time_buffer);
+	cJSON_AddStringToObject(reported, JSON_NIGHT_END, time_buffer);
 	if (!cJSON_PrintPreallocated(root, JSON_buffer, MAX_JSON_SIZE, 0 /* not formatted */))
 	{
 		ESP_LOGW(TAG_AWS, "JSON buffer too small");
@@ -338,7 +336,7 @@ void aws_iot_task(void *arg)
 		case SUCCESS:
 		case NETWORK_RECONNECTED:
 			retry_cnt = 0;
-			set_blink_pattern(BLINK_OFF);
+			set_blink_pattern(LampStatus*(0xFFFFFFFF));
 			if (update_inprogress)
 			{
 				if (((xTaskGetTickCount() * portTICK_RATE_MS) - publish_time) > MAX_SERVER_TIMEOUT)

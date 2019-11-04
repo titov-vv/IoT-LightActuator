@@ -15,12 +15,12 @@
 // THING SHADOW EXAMPLE
 //{
 //  "desired": {
-//    "lampOn": false,
+//    "lamp_status": 0,
 //    "night_start": "23:00",
 //    "night_end": "07:00"
 //  },
 //  "reported": {
-//    "lampOn": false,
+//    "lamp_status": 1,
 //    "night_start": "23:00",
 //    "night_end": "07:00"
 //  }
