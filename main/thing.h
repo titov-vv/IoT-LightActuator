@@ -26,6 +26,9 @@
 //  }
 //}
 //-----------------------------------------------------------------------------
+// Pin connected to MOSFET key that operates relay
+#define LAMP_PIN	GPIO_NUM_13
+//-----------------------------------------------------------------------------
 #define TAG_AWS		"AWS"
 //-----------------------------------------------------------------------------
 // Function to initiate AWS IOT task and handle MQTT exchange with the Cloud

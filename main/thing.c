@@ -8,6 +8,7 @@
 #include "blink.h"
 
 #include <string.h>
+#include "driver/gpio.h"
 #include "aws_iot_mqtt_client_interface.h"
 #include "aws_config.h"
 #include "cJSON.h"
@@ -44,13 +45,113 @@ static EventGroupHandle_t notification_group;
 static void aws_disconnect_handler(AWS_IoT_Client *pClient, void *data)
 {
     ESP_LOGW(TAG_AWS, "MQTT Disconnected");
+    update_needed = true;
+    update_inprogress = false;
 	set_blink_pattern(0x11111111);
+}
+//-----------------------------------------------------------------------------
+//  Checks input status value:
+//  0 - put low level on LAMP_PIN
+//  1 - put high level on LAMP_PIN
+//  Return false if any other value
+bool SetLampStatus(int status)
+{
+	if ((status != 0)&&(status != 1))
+	{
+		ESP_LOGE(TAG_AWS, "Bad lamp status value: %d", status);
+		return false;
+	}
+	gpio_set_level(LAMP_PIN, status);
+	LampStatus = status;
+
+	return true;
+}
+//-----------------------------------------------------------------------------
+// time is a string in "HH:MM" format
+// this function parses it and put integer values in hh and mm parameters
+// Return value: true if parsed ok, false - otherwise
+bool ParseTime(char *time, int *hh, int *mm)
+{
+	int hour, min;
+
+	if (strlen(time) != 5)
+	{
+		ESP_LOGE(TAG_AWS, "Bad time value %s", time);
+		return false;
+	}
+	if (time[2] != ':')
+	{
+		ESP_LOGE(TAG_AWS, "Bad time value %s", time);
+		return false;
+	}
+	hour = (time[0]-'0')*10 + (time[1]-'0');
+	if ((hour < 0)||(hour > 23))
+	{
+		ESP_LOGE(TAG_AWS, "Bad hour value in %s", time);
+		return false;
+	}
+	min = (time[3]-'0')*10 + (time[4]-'0');
+	if ((min < 0)||(min > 23))
+	{
+		ESP_LOGE(TAG_AWS, "Bad hour value in %s", time);
+		return false;
+	}
+
+	*hh = hour;
+	*mm = min;
+	return true;
 }
 //-----------------------------------------------------------------------------
 static void delta_callback(AWS_IoT_Client *pClient, char *topicName, uint16_t topicNameLen,
                                     IoT_Publish_Message_Params *params, void *pData)
 {
-    ESP_LOGI(TAG_AWS, "Delta callback %.*s\n%.*s", topicNameLen, topicName, (int) params->payloadLen, (char *)params->payload);
+	int topic_tag;
+	cJSON *root, *state, *value;
+  	char JSON_buffer[MAX_JSON_SIZE];
+
+	topic_tag = *((int *)pData);
+    ESP_LOGI(TAG_AWS, "Delta callback %.*s\n%.*s", topicNameLen, topicName, (int)params->payloadLen, (char *)params->payload);
+    if ((int)params->payloadLen > (MAX_JSON_SIZE-1))
+    	ESP_LOGE(TAG_AWS, "Received delta update is too big");
+    if (topic_tag != delta_tag)
+    {
+       	ESP_LOGI(TAG_AWS, "Delta topic tag mismatch");
+       	return;
+    }
+
+    memcpy(JSON_buffer, (char *)params->payload, (int) params->payloadLen);
+    JSON_buffer[(int)params->payloadLen] = 0;
+    root = cJSON_Parse(JSON_buffer);
+    if (root == NULL)
+    {
+    	ESP_LOGE(TAG_AWS, "JSON parse failure at: %s", cJSON_GetErrorPtr());
+    }
+    state = cJSON_GetObjectItemCaseSensitive(root, "state");
+    if (state == NULL)
+    {
+      	ESP_LOGE(TAG_AWS, "No 'state' found in delta update");
+    }
+
+    value = cJSON_GetObjectItemCaseSensitive(state, "LampStatus");
+    if (cJSON_IsNumber(value))
+    {
+    	ESP_LOGI(TAG_AWS, "New lamp status: %d", LampStatus);
+    	update_needed = SetLampStatus(value->valueint);
+    }
+
+    value = cJSON_GetObjectItemCaseSensitive(state, "night_start");
+    if (cJSON_IsString(value) && (value->valuestring != NULL))
+    {
+    	ESP_LOGI(TAG_AWS, "New night start time: %s", value->valuestring);
+    	update_needed = ParseTime(value->valuestring, &night_start_hh, &night_start_mm);
+    }
+
+    value = cJSON_GetObjectItemCaseSensitive(state, "night_end");
+    if (cJSON_IsString(value) && (value->valuestring != NULL))
+    {
+    	ESP_LOGI(TAG_AWS, "New night end time: %s", value->valuestring);
+    	update_needed = ParseTime(value->valuestring, &night_end_hh, &night_end_mm);
+    }
 }
 //-----------------------------------------------------------------------------
 static void status_callback(AWS_IoT_Client *pClient, char *topicName, uint16_t topicNameLen,
@@ -298,6 +399,8 @@ void aws_iot_task(void *arg)
 //-----------------------------------------------------------------------------
 void aws_start(EventGroupHandle_t events_group, int wifi_bit)
 {
+	gpio_set_direction(LAMP_PIN, GPIO_MODE_OUTPUT);
+
 	wifi_notification_bit = wifi_bit;
 	notification_group = events_group;
 
