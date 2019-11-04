@@ -38,11 +38,6 @@
 static EventGroupHandle_t events_group;
 const int IP_UP_BIT = BIT0;	// Bit to check IP link readiness
 const int STATE_BIT = BIT1; // Bit is set if state was changed
-
-
-
-//-----------------------------------------------------------------------------
-//
 ////-----------------------------------------------------------------------------
 //void lamp_actuate_callback(const char *pJsonString, uint32_t JsonStringDataLen, jsonStruct_t *pContext)
 //{
@@ -78,26 +73,6 @@ const int STATE_BIT = BIT1; // Bit is set if state was changed
 //        xEventGroupSetBits(events_group, STATE_BIT);
 //    }
 //}
-////-----------------------------------------------------------------------------
-//void shadow_update_callback(const char *pThingName, ShadowActions_t action, Shadow_Ack_Status_t status,
-//                                const char *pReceivedJsonDocument, void *pContextData) {
-//    IOT_UNUSED(pThingName);
-//    IOT_UNUSED(action);
-//    IOT_UNUSED(pReceivedJsonDocument);
-//    IOT_UNUSED(pContextData);
-//
-////    shadowUpdateInProgress = false;
-//
-//    ESP_LOGI(TAG_AWS, "update callback fired");
-//    if(SHADOW_ACK_TIMEOUT == status) {
-//        ESP_LOGE(TAG_AWS, "Update timed out");
-//    } else if(SHADOW_ACK_REJECTED == status) {
-//        ESP_LOGE(TAG_AWS, "Update rejected");
-//    } else if(SHADOW_ACK_ACCEPTED == status) {
-//        ESP_LOGI(TAG_AWS, "Update accepted");
-//    }
-//}
-//
 ////-----------------------------------------------------------------------------
 //void aws_iot_task(void *arg)
 //{
