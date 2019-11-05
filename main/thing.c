@@ -426,6 +426,7 @@ void aws_iot_task(void *arg)
 //-----------------------------------------------------------------------------
 void aws_start()
 {
+	PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[LAMP_PIN], PIN_FUNC_GPIO);
 	gpio_set_direction(LAMP_PIN, GPIO_MODE_OUTPUT);
 
 	xTaskCreate(aws_iot_task, "aws_iot_task", 20480, (void *)0, 5, NULL);
