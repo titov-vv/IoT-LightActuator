@@ -27,7 +27,8 @@
 //-----------------------------------------------------------------------------
 /* FreeRTOS event group to to check signals */
 static EventGroupHandle_t events_group;
-const int IP_UP_BIT = BIT0;	// Bit to check IP link readiness
+const int IP_UP_BIT = BIT0;	// Bit to indicate IP link readiness
+const int READY_BIT	= BIT1; // Bit to indicate operational readiness
 //-----------------------------------------------------------------------------
 void app_main(void)
 {
@@ -40,7 +41,7 @@ void app_main(void)
 
 	blink_start();
 
-	wifi_start(events_group, IP_UP_BIT);
+	wifi_start(events_group, IP_UP_BIT, READY_BIT);
 
-	aws_start(events_group, IP_UP_BIT);
+	aws_start(events_group, READY_BIT);
 }

@@ -32,7 +32,7 @@
 #define TAG_AWS		"AWS"
 //-----------------------------------------------------------------------------
 // Function to initiate AWS IOT task and handle MQTT exchange with the Cloud
-// events_group[wifi_bit] is using to track availability of IP connection
-void aws_start(EventGroupHandle_t events_group, int wifi_bit);
+// events_group[ready_bit] is using to track device readiness (IP is up and Time is set)
+void aws_start(EventGroupHandle_t events_group, int ready_bit);
 //-----------------------------------------------------------------------------
 #endif /* MAIN_THING_H_ */

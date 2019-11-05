@@ -13,13 +13,16 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_sntp.h"
 #include "tcpip_adapter.h"
 // Here is a private file with WiFi connection details
 // It contains defines for WIFI_SSID and WIFI_PASSWORD
 #include "wifi_credentials.h"
 //-----------------------------------------------------------------------------
+const int WIFI_LOST_BIT	= BIT2; // Bit to indicate operational readiness
 static int	wifi_retry = 0;
 static int	notification_bit;
+static int  time_bit;
 static EventGroupHandle_t notification_group;
 //-----------------------------------------------------------------------------
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
@@ -29,10 +32,9 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 		switch(event_id)
 		{
 		case WIFI_EVENT_STA_START:
-			set_blink_pattern(BLINK_FAST);
 			ESP_LOGI(TAG_WIFI, "Connecting...");
-			esp_wifi_connect();
 			xEventGroupClearBits(notification_group, notification_bit);
+			xEventGroupSetBits(notification_group, WIFI_LOST_BIT);
 			break;
 		case WIFI_EVENT_STA_CONNECTED:
 			wifi_retry = 0;
@@ -40,10 +42,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 			break;
 		case WIFI_EVENT_STA_DISCONNECTED:
 			wifi_retry++;
-			set_blink_pattern(BLINK_FAST);
 			ESP_LOGI(TAG_WIFI, "Reconnection attempt %d", wifi_retry);
 			esp_wifi_connect();
 			xEventGroupClearBits(notification_group, notification_bit);
+			xEventGroupSetBits(notification_group, WIFI_LOST_BIT);
 			break;
 		}
 	}
@@ -55,32 +57,92 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 		case IP_EVENT_STA_GOT_IP:
 			set_blink_pattern(BLINK_OFF);
 			xEventGroupSetBits(notification_group, notification_bit);
+			xEventGroupClearBits(notification_group, WIFI_LOST_BIT);
 			ESP_LOGI(TAG_WIFI, "Received IP: %s", ip4addr_ntoa(&((ip_event_got_ip_t*)event_data)->ip_info.ip));
 			break;
 		}
 	}
 }
 //-----------------------------------------------------------------------------
-void wifi_start(EventGroupHandle_t events_group, int wifi_bit)
+void ntp_event_callback(struct timeval *tv)
 {
-	notification_bit = wifi_bit;
-	notification_group = events_group;
+	sntp_sync_status_t sync_status;
+
+	sync_status = sntp_get_sync_status();
+	if (sync_status == SNTP_SYNC_STATUS_COMPLETED)
+	{
+		xEventGroupSetBits(notification_group, time_bit);
+		ESP_LOGI(TAG_WIFI, "Time sync completed");
+	}
+	else
+		ESP_LOGI(TAG_WIFI, "NTP notification, status: %d", sync_status);
+}
+//-----------------------------------------------------------------------------
+void wifi_and_ntp_task(void *arg)
+{
+	time_t now;
+	struct tm timeinfo;
+	char strftime_buf[64];
 
 	ESP_LOGI(TAG_WIFI, "Initialization started");
+	setenv("TZ", DEVICE_TIMEZONE, 1);
+	tzset();
+	time(&now);
+	localtime_r(&now, &timeinfo);
+	strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+	ESP_LOGI(TAG_WIFI, "Current time: %s", strftime_buf);
+
 	tcpip_adapter_init();
 	wifi_init_config_t wifi_init_cfg = WIFI_INIT_CONFIG_DEFAULT();
 	ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_cfg));
-// TODO
+
 // ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
 	ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL));
 	ESP_LOGI(TAG_WIFI, "Initialization completed");
 
-	ESP_LOGI(TAG_WIFI, "Connect to '%s'", WIFI_SSID);
 	wifi_config_t wifi_cfg = { .sta = { .ssid = WIFI_SSID, .password = WIFI_PASSWORD }};
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_cfg));
-    ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_LOGI(TAG_WIFI, "Connection start...");
+    ESP_LOGI(TAG_WIFI, "Connect to '%s'", WIFI_SSID);
+	ESP_ERROR_CHECK(esp_wifi_start());
+
+	while(1)
+	{
+		set_blink_pattern(BLINK_FAST);
+		esp_wifi_connect();
+
+		xEventGroupWaitBits(notification_group, notification_bit, false, true, portMAX_DELAY);
+		ESP_LOGI(TAG_WIFI, "IP link is up. Getting time from NTP...");
+
+	    ESP_LOGI(TAG_WIFI, "Initializing SNTP");
+	    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+	    sntp_setservername(0, SNMP_SERVER_ADDRESS);
+	    sntp_set_time_sync_notification_cb(ntp_event_callback);
+	    sntp_init();
+
+	    ESP_LOGI(TAG_WIFI, "Waiting for NTP sync...");
+	    xEventGroupWaitBits(notification_group, time_bit, false, true, portMAX_DELAY);
+
+	    sntp_stop();
+		time(&now);
+		localtime_r(&now, &timeinfo);
+		strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+		ESP_LOGI(TAG_WIFI, "Time synchronized: %s", strftime_buf);
+
+		ESP_LOGI(TAG_WIFI, "Sleep until disconnect happen");
+	    xEventGroupWaitBits(notification_group, WIFI_LOST_BIT, false, true, portMAX_DELAY);
+	    ESP_LOGW(TAG_WIFI, "WiFi connection lost");
+	    xEventGroupClearBits(notification_group, time_bit);
+	}
+}
+//-----------------------------------------------------------------------------
+void wifi_start(EventGroupHandle_t events_group, int wifi_bit, int ready_bit)
+{
+	notification_bit = wifi_bit;
+	time_bit = ready_bit;
+	notification_group = events_group;
+
+	xTaskCreate(wifi_and_ntp_task, "ntp_task", 8192, (void *)0, 5, NULL);
 }
 //-----------------------------------------------------------------------------
