@@ -52,7 +52,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 		switch(event_id)
 		{
 		case IP_EVENT_STA_GOT_IP:
-			set_blink_pattern(BLINK_OFF);
 			xEventGroupSetBits(events_group, IP_UP_BIT);
 			xEventGroupClearBits(events_group, WIFI_LOST_BIT);
 			ESP_LOGI(TAG_WIFI, "Received IP: %s", ip4addr_ntoa(&((ip_event_got_ip_t*)event_data)->ip_info.ip));

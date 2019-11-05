@@ -36,7 +36,7 @@ static int		delta_tag = 0x01;
 static int		accepted_tag = 0x02;
 static int		rejected_tag = 0x03;
 // Thing status variables that are mirrored in Shadow
-static bool LampStatus = false;
+static int LampStatus = 0;
 static int night_start_hh = 23;
 static int night_start_mm = 0;
 static int night_end_hh = 7;
@@ -45,29 +45,54 @@ static int night_end_mm = 0;
 // Global variable to keep Cloud connection reference
 static AWS_IoT_Client aws_client;
 //-----------------------------------------------------------------------------
-static void aws_disconnect_handler(AWS_IoT_Client *pClient, void *data)
+void validate_lamp_state()
 {
-    ESP_LOGW(TAG_AWS, "MQTT Disconnected");
-    update_needed = true;
-    update_inprogress = false;
-	set_blink_pattern(0x11111111);
+	time_t t_now, t_day_end, t_day_start;
+	struct tm tm_now, tm_edge;
+	uint32_t blink_status;
+
+	time(&t_now);
+	localtime_r(&t_now, &tm_now);
+
+	tm_edge = tm_now;
+	tm_edge.tm_hour = night_start_hh;
+	tm_edge.tm_min = night_start_mm;
+	tm_edge.tm_sec = 0;
+	t_day_end = mktime(&tm_edge);
+
+	tm_edge = tm_now;
+	tm_edge.tm_hour = night_end_hh;
+	tm_edge.tm_min = night_end_mm;
+	tm_edge.tm_sec = 0;
+	t_day_start = mktime(&tm_edge);
+
+	if (LampStatus == 1)
+		blink_status = 0x00000005; // on = 2 blinks
+	else
+		blink_status = 0x00000001; // off = 1 blink
+
+	if ((difftime(t_now, t_day_start) > 0)&&(difftime(t_day_end, t_now) > 0))
+	{	// Day time
+		gpio_set_level(LAMP_PIN, LampStatus);
+	}
+	else
+	{	// Night time, switch off
+		gpio_set_level(LAMP_PIN, 0);
+		blink_status = blink_status | 0x0FFFF000;
+	}
+
+	if (update_needed)
+		blink_status = 0x55555555;
+	set_blink_pattern(blink_status);
 }
 //-----------------------------------------------------------------------------
-//  Checks input status value:
-//  0 - put low level on LAMP_PIN
-//  1 - put high level on LAMP_PIN
-//  Return false if any other value
-bool SetLampStatus(int status)
+static void aws_disconnect_handler(AWS_IoT_Client *pClient, void *data)
 {
-	if ((status != 0)&&(status != 1))
-	{
-		ESP_LOGE(TAG_AWS, "Bad lamp status value: %d", status);
-		return false;
-	}
-	gpio_set_level(LAMP_PIN, status);
-	LampStatus = status;
+    ESP_LOGW(TAG_AWS, "MQTT Disconnected. Lamp is off");
 
-	return true;
+    LampStatus = 0;
+    update_needed = true;
+    update_inprogress = false;
 }
 //-----------------------------------------------------------------------------
 // time is a string in "HH:MM" format
@@ -138,8 +163,16 @@ static void delta_callback(AWS_IoT_Client *pClient, char *topicName, uint16_t to
     value = cJSON_GetObjectItemCaseSensitive(state, JSON_LAMP_STATUS);
     if (cJSON_IsNumber(value))
     {
-    	ESP_LOGI(TAG_AWS, "New lamp status: %d", value->valueint);
-    	update_needed = SetLampStatus(value->valueint);
+    	if ((value->valueint != 0)&&(value->valueint != 1))
+    	{
+    		ESP_LOGE(TAG_AWS, "Bad lamp status value: %d", value->valueint);
+    	}
+    	else
+    	{
+    		ESP_LOGI(TAG_AWS, "New lamp status: %d", value->valueint);
+    		LampStatus = value->valueint;
+    		update_needed = true;
+    	}
     }
 
     value = cJSON_GetObjectItemCaseSensitive(state, JSON_NIGHT_START);
@@ -215,7 +248,6 @@ static IoT_Error_t connect_mqtt(AWS_IoT_Client *client)
 	ESP_LOGI(TAG_AWS, "Network setup is ready");
 
 	ESP_LOGI(TAG_AWS, "MQTT connect started");
-	set_blink_pattern(0x11111111);
 	connectParams.keepAliveIntervalInSec = 60;
 	connectParams.isCleanSession = true;
 	connectParams.MQTTVersion = MQTT_3_1_1;
@@ -285,10 +317,7 @@ void update_shadow(AWS_IoT_Client *client)
 	cJSON_AddItemToObject(root, "state", state);
 	reported = cJSON_CreateObject();
 	cJSON_AddItemToObject(state, "reported", reported);
-	if (LampStatus)
-		cJSON_AddNumberToObject(reported, JSON_LAMP_STATUS, 1);
-	else
-		cJSON_AddNumberToObject(reported, JSON_LAMP_STATUS, 0);
+	cJSON_AddNumberToObject(reported, JSON_LAMP_STATUS, LampStatus);
 	sprintf(time_buffer, "%02d:%02d", night_start_hh, night_start_mm);
 	cJSON_AddStringToObject(reported, JSON_NIGHT_START, time_buffer);
 	sprintf(time_buffer, "%02d:%02d", night_end_hh, night_end_mm);
@@ -330,13 +359,13 @@ void aws_iot_task(void *arg)
 	while (1)
 	{
 		res = aws_iot_mqtt_yield(&aws_client, 100);
+		validate_lamp_state();
 
 		switch(res)
 		{
 		case SUCCESS:
 		case NETWORK_RECONNECTED:
 			retry_cnt = 0;
-			set_blink_pattern(LampStatus*(0xFFFFFFFF));
 			if (update_inprogress)
 			{
 				if (((xTaskGetTickCount() * portTICK_RATE_MS) - publish_time) > MAX_SERVER_TIMEOUT)
@@ -353,7 +382,7 @@ void aws_iot_task(void *arg)
 			}
 			break;
 		case NETWORK_ATTEMPTING_RECONNECT:		// Automatic re-connect is in progress
-			vTaskDelay(100 / portTICK_RATE_MS);
+			vTaskDelay(1000 / portTICK_RATE_MS);
 			continue;
 			break;
 		case NETWORK_DISCONNECTED_ERROR:		// No connection available and need to connect
