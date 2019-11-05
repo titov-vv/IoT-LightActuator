@@ -8,6 +8,10 @@
 #ifndef MAIN_MAIN_H_
 #define MAIN_MAIN_H_
 //-----------------------------------------------------------------------------
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+//-----------------------------------------------------------------------------
 // Define TAGs for log messages
 #define	TAG_MAIN	"APP"
 #define TAG_WIFI	"WiFi"
@@ -21,6 +25,6 @@
 #define WIFI_LOST_BIT	BIT2
 //-----------------------------------------------------------------------------
 // FreeRTOS event group to to synchronize between tasks
-//EventGroupHandle_t events_group;
+extern EventGroupHandle_t events_group;
 //-----------------------------------------------------------------------------
 #endif /* MAIN_MAIN_H_ */

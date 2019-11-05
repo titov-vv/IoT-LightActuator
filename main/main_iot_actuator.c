@@ -6,11 +6,7 @@
 	- Power on/off connected lamp
 */
 //-----------------------------------------------------------------------------
-// FreeRTOS
 #include "../build/config/sdkconfig.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
 // Espressif
 #include "esp_system.h"
 #include "esp_spi_flash.h"
@@ -37,7 +33,7 @@ void app_main(void)
 
 	blink_start();
 
-	wifi_start(events_group);
+	wifi_start();
 
-	aws_start(events_group);
+	aws_start();
 }

@@ -8,10 +8,6 @@
 #ifndef MAIN_THING_H_
 #define MAIN_THING_H_
 //-----------------------------------------------------------------------------
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
-//-----------------------------------------------------------------------------
 // THING SHADOW EXAMPLE
 //{
 //  "desired": {
@@ -31,6 +27,6 @@
 //-----------------------------------------------------------------------------
 // Function to initiate AWS IOT task and handle MQTT exchange with the Cloud
 // READY_BIT is used to track device readiness (IP is up and Time is set)
-void aws_start(EventGroupHandle_t events_group);
+void aws_start();
 //-----------------------------------------------------------------------------
 #endif /* MAIN_THING_H_ */

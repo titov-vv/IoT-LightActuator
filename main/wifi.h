@@ -8,10 +8,6 @@
 #ifndef MAIN_WIFI_H_
 #define MAIN_WIFI_H_
 //-----------------------------------------------------------------------------
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
-//-----------------------------------------------------------------------------
 #define SNMP_SERVER_ADDRESS	"pool.ntp.org"
 #define DEVICE_TIMEZONE		"MSK-3"
 //-----------------------------------------------------------------------------
@@ -20,6 +16,6 @@
 // - IP_UP_BIT when IP connection will be up
 // - READY_BIT when time will be set and device is ready for function
 // - WIFI_LOST_BIT when WiFi connection is lost and re-init procedure started
-void wifi_start(EventGroupHandle_t events_group);
+void wifi_start();
 //-----------------------------------------------------------------------------
 #endif /* MAIN_WIFI_H_ */
