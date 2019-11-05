@@ -29,10 +29,8 @@
 // Pin connected to MOSFET key that operates relay
 #define LAMP_PIN	GPIO_NUM_13
 //-----------------------------------------------------------------------------
-#define TAG_AWS		"AWS"
-//-----------------------------------------------------------------------------
 // Function to initiate AWS IOT task and handle MQTT exchange with the Cloud
-// events_group[ready_bit] is using to track device readiness (IP is up and Time is set)
-void aws_start(EventGroupHandle_t events_group, int ready_bit);
+// READY_BIT is used to track device readiness (IP is up and Time is set)
+void aws_start(EventGroupHandle_t events_group);
 //-----------------------------------------------------------------------------
 #endif /* MAIN_THING_H_ */

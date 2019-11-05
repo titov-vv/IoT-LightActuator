@@ -4,6 +4,8 @@
  *  Created on: Nov 1, 2019
  *      Author: vtitov
  */
+//-----------------------------------------------------------------------------
+#include "main.h"
 #include "thing.h"
 #include "blink.h"
 
@@ -42,7 +44,6 @@ static int night_end_mm = 0;
 //-----------------------------------------------------------------------------
 // Global variable to keep Cloud connection reference
 static AWS_IoT_Client aws_client;
-static int device_ready_bit;
 static EventGroupHandle_t notification_group;
 //-----------------------------------------------------------------------------
 static void aws_disconnect_handler(AWS_IoT_Client *pClient, void *data)
@@ -211,7 +212,7 @@ static IoT_Error_t connect_mqtt(AWS_IoT_Client *client)
 	IoT_Client_Connect_Params connectParams = iotClientConnectParamsDefault;
 
 	ESP_LOGI(TAG_AWS, "Start MQTT connection. Wait for IP link.");
-	xEventGroupWaitBits(notification_group, device_ready_bit, false, true, portMAX_DELAY);
+	xEventGroupWaitBits(notification_group, READY_BIT, false, true, portMAX_DELAY);
 	ESP_LOGI(TAG_AWS, "Network setup is ready");
 
 	ESP_LOGI(TAG_AWS, "MQTT connect started");
@@ -395,11 +396,10 @@ void aws_iot_task(void *arg)
 	vTaskDelete(NULL);
 }
 //-----------------------------------------------------------------------------
-void aws_start(EventGroupHandle_t events_group, int ready_bit)
+void aws_start(EventGroupHandle_t events_group)
 {
 	gpio_set_direction(LAMP_PIN, GPIO_MODE_OUTPUT);
 
-	device_ready_bit = ready_bit;
 	notification_group = events_group;
 
 	xTaskCreate(aws_iot_task, "aws_iot_task", 20480, (void *)0, 5, NULL);

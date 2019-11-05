@@ -18,17 +18,13 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 // Project
+#include "main.h"
 #include "blink.h"
 #include "wifi.h"
 #include "thing.h"
 //-----------------------------------------------------------------------------
-// Define TAGs for log messages
-#define	TAG_MAIN	"APP"
-//-----------------------------------------------------------------------------
-/* FreeRTOS event group to to check signals */
-static EventGroupHandle_t events_group;
-const int IP_UP_BIT = BIT0;	// Bit to indicate IP link readiness
-const int READY_BIT	= BIT1; // Bit to indicate operational readiness
+// FreeRTOS event group to to synchronize between tasks
+EventGroupHandle_t events_group;
 //-----------------------------------------------------------------------------
 void app_main(void)
 {
@@ -41,7 +37,7 @@ void app_main(void)
 
 	blink_start();
 
-	wifi_start(events_group, IP_UP_BIT, READY_BIT);
+	wifi_start(events_group);
 
-	aws_start(events_group, READY_BIT);
+	aws_start(events_group);
 }
