@@ -340,7 +340,7 @@ void update_shadow(AWS_IoT_Client *client)
     if (res == SUCCESS)
     {
     	publish_time = xTaskGetTickCount() * portTICK_RATE_MS;
-    	ESP_LOGI(TAG_AWS, "MQTT message published @%d", publish_time);
+    	ESP_LOGI(TAG_AWS, "MQTT message published");
     	update_needed = false;
     	update_inprogress = true;
     }

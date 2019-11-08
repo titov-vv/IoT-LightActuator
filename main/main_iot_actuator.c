@@ -3,7 +3,7 @@
 	- Connect to WiFi
 	- Connect to AWS IoT cloud
 	- Get state from Shadow
-	- Power on/off connected lamp
+	- Power on/off connected lamp following the shadow changes
 */
 //-----------------------------------------------------------------------------
 #include "../build/config/sdkconfig.h"
@@ -37,3 +37,4 @@ void app_main(void)
 
 	aws_start();
 }
+//-----------------------------------------------------------------------------
